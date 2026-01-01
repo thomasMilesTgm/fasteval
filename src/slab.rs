@@ -312,6 +312,7 @@ impl ParseSlab {
     /// # Panics
     ///
     /// If the internal character buffer is a null pointer, this function panics.
+    #[allow(clippy::mut_from_ref)]
     pub(crate) unsafe fn char_buf_mut(&self) -> &mut String {
         self.char_buf
             .get()
