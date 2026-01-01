@@ -100,49 +100,36 @@ fn consts() {
     assert_eq!(format!("{:?}",&slab),
 "Slab{ exprs:{ 0:Expression { first: EConstant(0.01234), pairs: [] } }, vals:{}, instrs:{} }");
 
-    Parser::new().parse("12.34u", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(1.234e-5), pairs: [] } }, vals:{}, instrs:{} }");
+    const VAL: f64 = 12.34;
+    let mut exp_offset = 0;
+    let mut e = 10.;
+    while e < VAL {
+        exp_offset += 1;
+        e *= 10.;
+    }
 
-    Parser::new().parse("12.34n", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.00000001234), pairs: [] } }, vals:{}, instrs:{} }");
+    for (suffix, exp) in [
+        ("u", -6),
+        ("n", -9),
+        ("p", -12),
+        ("e+56", 56),
+        ("E+56", 56),
+        ("e-56", -56),
+        ("E-56", -56),
+    ] {
+        for sign in ["", "-"] {
+            let expr = format!("{sign}{VAL}{suffix}");
+            Parser::new().parse(&expr, &mut slab.ps);
 
-    Parser::new().parse("12.34p", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.00000000001234), pairs: [] } }, vals:{}, instrs:{} }");
+            let exp_adjusted = exp + exp_offset;
 
-    Parser::new().parse("12.34e56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(1234000000000000000000000000000000000000000000000000000000.0), pairs: [] } }, vals:{}, instrs:{} }");
+            let expect = format!("\
+                Slab{{ exprs:{{ 0:Expression {{ first: EConstant({sign}1.234e{exp_adjusted}), pairs: [] }} }}, vals:{{}}, instrs:{{}} }}\
+            ");
 
-    Parser::new().parse("12.34e+56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(1234000000000000000000000000000000000000000000000000000000.0), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("12.34E56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(1234000000000000000000000000000000000000000000000000000000.0), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("12.34E+56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(1234000000000000000000000000000000000000000000000000000000.0), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("12.34e-56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.0000000000000000000000000000000000000000000000000000001234), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("12.34E-56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.0000000000000000000000000000000000000000000000000000001234), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("+12.34E-56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.0000000000000000000000000000000000000000000000000000001234), pairs: [] } }, vals:{}, instrs:{} }");
-
-    Parser::new().parse("-12.34E-56", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(-0.0000000000000000000000000000000000000000000000000000001234), pairs: [] } }, vals:{}, instrs:{} }");
+            assert_eq!(expect, format!("{:?}", &slab), "parsing '{expr}'");
+        }
+    }
 
     Parser::new().parse("-x", &mut slab.ps).unwrap();
     assert_eq!(format!("{:?}",&slab),
