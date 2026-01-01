@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 //! Fast evaluation of algebraic expressions
 //!
 //! # Features
@@ -311,18 +312,21 @@
 //!
 //!     // Unsafe Variables must be registered before 'parse()'.
 //!     // (Normal Variables only need definitions during the 'eval' phase.)
-//!     unsafe { slab.ps.add_unsafe_var("deg".to_string(), &deg); } // `add_unsafe_var()` only exists if the `unsafe-vars` feature is enabled: `cargo test --features unsafe-vars`
+//!     #[cfg(feature = "unsafe-vars")]
+//!     {
+//!         unsafe { slab.ps.add_unsafe_var("deg".to_string(), &deg); } // `add_unsafe_var()` only exists if the `unsafe-vars` feature is enabled: `cargo test --features unsafe-vars`
 //!
-//!     let expr_str = "sin(deg/360 * 2*pi())";
-//!     let compiled = parser.parse(expr_str, &mut slab.ps)?.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
+//!         let expr_str = "sin(deg/360 * 2*pi())";
+//!         let compiled = parser.parse(expr_str, &mut slab.ps)?.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
 //!
-//!     let mut ns = fasteval::EmptyNamespace;  // We only define unsafe variables, not normal variables,
-//!                                             // so EmptyNamespace is fine.
+//!         let mut ns = fasteval::EmptyNamespace;  // We only define unsafe variables, not normal variables,
+//!                                                 // so EmptyNamespace is fine.
 //!
-//!     for d in 0..360 {
-//!         deg = d as f64;
-//!         let val = fasteval::eval_compiled!(compiled, &slab, &mut ns);
-//!         eprintln!("sin({}°) = {}", deg, val);
+//!         for d in 0..360 {
+//!             deg = d as f64;
+//!             let val = fasteval::eval_compiled!(compiled, &slab, &mut ns);
+//!             eprintln!("sin({}°) = {}", deg, val);
+//!         }
 //!     }
 //!
 //!     Ok(())
@@ -384,16 +388,16 @@
 //! default, an expression can only perform math operations; there is no way
 //! for it to access other types of operations (like network or filesystem or
 //! external commands).  Additionally, we guard against malicious expressions:
-//! 
+//!
 //! * Expressions that are too large (greater than 4KB).
 //! * Expressions that are too-deeply nested (greater than 32 levels).
 //! * Expressions with too many values (greater than 64).
 //! * Expressions with too many sub-expressions (greater than 64).
-//! 
+//!
 //! All limits can be customized at parse time.  If any limits are exceeded,
 //! [`parse()`](https://docs.rs/fasteval/latest/fasteval/parser/struct.Parser.html#method.parse) will return an
 //! [Error](https://docs.rs/fasteval/latest/fasteval/error/enum.Error.html).
-//! 
+//!
 //! Note that it *is* possible for you (the developer) to define custom functions
 //! which might perform dangerous operations.  It is your responsibility to make
 //! sure that all custom functionality is safe.
@@ -602,7 +606,6 @@
 //! * [openpinescript](#coming-soon)
 //! * [The Texas Instruments MW-83 Plus Scientific Microwave Oven](https://raw.githubusercontent.com/likebike/fasteval/master/examples/scientific-microwave-ti-mw-83-plus.jpg)
 
-
 //#![feature(test)]
 //#![warn(missing_docs)]
 
@@ -619,16 +622,21 @@ pub mod evaler;
 pub mod evalns;
 pub mod ez;
 
-pub use self::error::Error;
-pub use self::parser::{Parser, Expression, ExpressionI, Value, ValueI};
-pub use self::compiler::{Compiler, Instruction::{self, IConst}, InstructionI};
-#[cfg(feature="unsafe-vars")]
+#[cfg(feature = "unsafe-vars")]
 pub use self::compiler::Instruction::IUnsafeVar;
+pub use self::compiler::{
+    Compiler,
+    Instruction::{self, IConst},
+    InstructionI,
+};
+pub use self::error::Error;
 pub use self::evaler::Evaler;
-pub use self::slab::Slab;
-pub use self::evalns::{EvalNamespace, Cached, EmptyNamespace, StringToF64Namespace, StrToF64Namespace, StringToCallbackNamespace, StrToCallbackNamespace, LayeredStringToF64Namespace, CachedCallbackNamespace};
+pub use self::evalns::{
+    Cached, CachedCallbackNamespace, EmptyNamespace, EvalNamespace, LayeredStringToF64Namespace,
+    StrToCallbackNamespace, StrToF64Namespace, StringToCallbackNamespace, StringToF64Namespace,
+};
 pub use self::ez::ez_eval;
-
+pub use self::parser::{Expression, ExpressionI, Parser, Value, ValueI};
+pub use self::slab::Slab;
 
 // TODO: Convert `match`es to `if let`s for performance boost.
-
