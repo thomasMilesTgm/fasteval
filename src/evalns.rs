@@ -218,7 +218,7 @@ pub trait Cached {
     fn cache_clear(&mut self);
 }
 
-//// I don't want to put this into the public API until it is needed.
+/// I don't want to put this into the public API until it is needed.
 // pub trait Layered {
 //     fn push(&mut self);
 //     fn pop(&mut self);
@@ -244,8 +244,8 @@ pub struct CachedCallbackNamespace<'a> {
     cb   :Box<dyn FnMut(&str, Vec<f64>)->Option<f64> + 'a>,  // I think a reference would be more efficient than a Box, but then I would need to use a funky 'let cb=|n|{}; Namespace::new(&cb)' syntax.  The Box results in a super convenient pass-the-cb-by-value API interface.
 }
 
-//// I am commenting these out until I need them in real-life.
-//// (I don't want to add things to the public API until necessary.)
+/// I am commenting these out until I need them in real-life.
+/// (I don't want to add things to the public API until necessary.)
 // pub struct CachedLayeredNamespace<'a> {
 //     caches:Vec<BTreeMap<String,f64>>,
 //     cb    :Box<dyn FnMut(&str, Vec<f64>)->Option<f64> + 'a>,
@@ -303,11 +303,7 @@ pub type StringToCallbackNamespace<'a> = BTreeMap<String, Box<dyn FnMut(Vec<f64>
 impl EvalNamespace for StringToCallbackNamespace<'_> {
     #[inline]
     fn lookup(&mut self, name:&str, args:Vec<f64>, _keybuf:&mut String) -> Option<f64> {
-        if let Some(f) = self.get_mut(name) {
-            Some(f(args))
-        } else {
-            None
-        }
+        self.get_mut(name).map(|f| f(args))
     }
 }
 
@@ -320,11 +316,7 @@ pub type StrToCallbackNamespace<'a> = BTreeMap<&'static str, Box<dyn FnMut(Vec<f
 impl EvalNamespace for StrToCallbackNamespace<'_> {
     #[inline]
     fn lookup(&mut self, name:&str, args:Vec<f64>, _keybuf:&mut String) -> Option<f64> {
-        if let Some(f) = self.get_mut(name) {
-            Some(f(args))
-        } else {
-            None
-        }
+        self.get_mut(name).map(|f| f(args))
     }
 }
 

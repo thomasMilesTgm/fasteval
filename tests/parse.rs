@@ -119,7 +119,7 @@ fn consts() {
     ] {
         for sign in ["", "-"] {
             let expr = format!("{sign}{VAL}{suffix}");
-            Parser::new().parse(&expr, &mut slab.ps);
+            Parser::new().parse(&expr, &mut slab.ps).unwrap();
 
             let exp_adjusted = exp + exp_offset;
 
