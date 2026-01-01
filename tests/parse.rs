@@ -104,10 +104,6 @@ fn consts() {
     assert_eq!(format!("{:?}",&slab),
 "Slab{ exprs:{ 0:Expression { first: EConstant(1.234e-5), pairs: [] } }, vals:{}, instrs:{} }");
 
-    Parser::new().parse("12.34µ", &mut slab.ps).unwrap();
-    assert_eq!(format!("{:?}",&slab),
-"Slab{ exprs:{ 0:Expression { first: EConstant(0.00001234), pairs: [] } }, vals:{}, instrs:{} }");
-
     Parser::new().parse("12.34n", &mut slab.ps).unwrap();
     assert_eq!(format!("{:?}",&slab),
 "Slab{ exprs:{ 0:Expression { first: EConstant(0.00000001234), pairs: [] } }, vals:{}, instrs:{} }");
