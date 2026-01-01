@@ -32,36 +32,37 @@
 //!
 //! Here is an example of re-using one `Slab` for multiple parse/eval cycles:
 //! ```
-//! use fasteval::Evaler;  // import this trait so we can call eval().
-//! fn main() -> Result<(), fasteval::Error> {
-//!     let parser = fasteval::Parser::new();
-//!     let mut slab = fasteval::Slab::new();
+//! use fasteval2::Evaler;  // import this trait so we can call eval().
+//! fn main() -> Result<(), fasteval2::Error> {
+//!     let parser = fasteval2::Parser::new();
+//!     let mut slab = fasteval2::Slab::new();
 //!
-//!     let val = parser.parse("1+2*3-4", &mut slab.ps)?.from(&slab.ps).eval(&slab, &mut fasteval::EmptyNamespace)?;
+//!     let val = parser.parse("1+2*3-4", &mut slab.ps)?.from(&slab.ps).eval(&slab, &mut fasteval2::EmptyNamespace)?;
 //!     assert_eq!(val, 3.0);
 //!
 //!     // Let's re-use the same slab again to save memory operations.
 //!
 //!     // `parse()` will clear the Slab's data.  It is important that you
 //!     // do not use an old expression after the Slab has been cleared.
-//!     let val = parser.parse("5+6*7-8", &mut slab.ps)?.from(&slab.ps).eval(&slab, &mut fasteval::EmptyNamespace)?;
+//!     let val = parser.parse("5+6*7-8", &mut slab.ps)?.from(&slab.ps).eval(&slab, &mut fasteval2::EmptyNamespace)?;
 //!     assert_eq!(val, 39.0);
 //!
 //!     Ok(())
 //! }
 //! ```
 
+use crate::compiler::{
+    Instruction::{self, IConst},
+    InstructionI,
+};
 use crate::error::Error;
-use crate::parser::{ExpressionI, ValueI,
-                    Expression,  Value};
-use crate::compiler::{Instruction::{self, IConst}, InstructionI};
+use crate::parser::{Expression, ExpressionI, Value, ValueI};
 
-use std::fmt;
 use std::mem;
+use std::{cell::UnsafeCell, fmt};
 
-#[cfg(feature="unsafe-vars")]
+#[cfg(feature = "unsafe-vars")]
 use std::collections::BTreeMap;
-
 
 // Eliminate function call overhead:
 macro_rules! get_expr {
@@ -90,7 +91,6 @@ macro_rules! get_instr {
     };
 }
 
-
 impl ExpressionI {
     /// Gets an Expression reference from the ParseSlab.
     ///
@@ -101,8 +101,8 @@ impl ExpressionI {
     /// would force you to split the process into at least two lines.)
     ///
     #[inline]
-    pub fn from(self, ps:&ParseSlab) -> &Expression {
-        get_expr!(ps,self)
+    pub fn from(self, ps: &ParseSlab) -> &Expression {
+        get_expr!(ps, self)
     }
 }
 impl ValueI {
@@ -111,15 +111,15 @@ impl ValueI {
     /// See the comments on [ExpressionI::from](struct.ExpressionI.html#method.from).
     ///
     #[inline]
-    pub fn from(self, ps:&ParseSlab) -> &Value {
-        get_val!(ps,self)
+    pub fn from(self, ps: &ParseSlab) -> &Value {
+        get_val!(ps, self)
     }
 }
 
 /// [See the `slab module` documentation.](index.html)
 pub struct Slab {
-    pub ps:ParseSlab,
-    pub cs:CompileSlab,
+    pub ps: ParseSlab,
+    pub cs: CompileSlab,
 }
 
 /// `ParseSlab` is where `parse()` results are stored, located at `Slab.ps`.
@@ -162,11 +162,12 @@ pub struct Slab {
 /// Here is an example of correct and incorrect use of unsafe variable pointers:
 ///
 /// ```
-/// use fasteval::Evaler;    // use this trait so we can call eval().
-/// use fasteval::Compiler;  // use this trait so we can call compile().
+/// use fasteval2::Evaler;    // use this trait so we can call eval().
+/// use fasteval2::Compiler;  // use this trait so we can call compile().
 ///
 /// // Here is an example of INCORRECT registration.  DO NOT DO THIS!
-/// fn bad_unsafe_var(slab_mut:&mut fasteval::Slab) {
+/// #[cfg(feature = "unsafe-vars")]
+/// fn bad_unsafe_var(slab_mut:&mut fasteval2::Slab) {
 ///     let bad : f64 = 0.0;
 ///
 ///     // Saves a pointer to 'bad':
@@ -175,9 +176,13 @@ pub struct Slab {
 ///     // 'bad' goes out-of-scope here, and the pointer we registered is no longer valid!
 ///     // This will result in undefined behavior.
 /// }
-///
-/// fn main() -> Result<(), fasteval::Error> {
-///     let mut slab = fasteval::Slab::new();
+/// #[cfg(not(feature = "unsafe-vars"))]
+/// fn main() -> Result<(), fasteval2::Error> {
+///     Ok(())
+/// }
+/// #[cfg(feature = "unsafe-vars")]
+/// fn main() -> Result<(), fasteval2::Error> {
+///     let mut slab = fasteval2::Slab::new();
 ///
 ///     // The Unsafe Variable will use a pointer to read this memory location:
 ///     // You must make sure that this variable stays in-scope as long as the
@@ -191,39 +196,37 @@ pub struct Slab {
 ///     // bad_unsafe_var(&mut slab);  // Don't do it this way.
 ///
 ///     let expr_str = "sin(deg/360 * 2*pi())";
-///     let expr_ref = fasteval::Parser::new().parse(expr_str, &mut slab.ps)?.from(&slab.ps);
-///
+///     let expr_ref = fasteval2::Parser::new().parse(expr_str, &mut slab.ps)?.from(&slab.ps);
+///     let mut ns = fasteval2::EmptyNamespace;  // We only define unsafe variables, not normal variables,
+///                                             // so EmptyNamespace is fine.
 ///     // The main reason people use Unsafe Variables is to maximize performance.
 ///     // Compilation also helps performance, so it is usually used together with Unsafe Variables:
-///     let compiled = expr_ref.compile(&slab.ps, &mut slab.cs);
-///
-///     let mut ns = fasteval::EmptyNamespace;  // We only define unsafe variables, not normal variables,
-///                                             // so EmptyNamespace is fine.
+///     let compiled = expr_ref.compile(&slab.ps, &mut slab.cs, &mut ns);
 ///
 ///     for d in 0..360 {
 ///         deg = d as f64;
-///         let val = fasteval::eval_compiled!(compiled, &slab, &mut ns);
+///         let val = fasteval2::eval_compiled!(compiled, &slab, &mut ns);
 ///         eprintln!("sin({}°) = {}", deg, val);
 ///     }
 ///
 ///     Ok(())
 /// }
-/// 
+///
 /// ```
 pub struct ParseSlab {
-    pub(crate) exprs      :Vec<Expression>,
-    pub(crate) vals       :Vec<Value>,
-    pub(crate) def_expr   :Expression,
-    pub(crate) def_val    :Value,
-    pub(crate) char_buf   :String,
-    #[cfg(feature="unsafe-vars")]
-    pub(crate) unsafe_vars:BTreeMap<String, *const f64>,
+    pub(crate) exprs: Vec<Expression>,
+    pub(crate) vals: Vec<Value>,
+    pub(crate) def_expr: Expression,
+    pub(crate) def_val: Value,
+    pub(crate) char_buf: UnsafeCell<String>,
+    #[cfg(feature = "unsafe-vars")]
+    pub(crate) unsafe_vars: BTreeMap<String, *const f64>,
 }
 
 /// `CompileSlab` is where `compile()` results are stored, located at `Slab.cs`.
 pub struct CompileSlab {
-    pub(crate) instrs   :Vec<Instruction>,
-    pub(crate) def_instr:Instruction,
+    pub(crate) instrs: Vec<Instruction>,
+    pub(crate) def_instr: Instruction,
 }
 
 impl ParseSlab {
@@ -233,7 +236,7 @@ impl ParseSlab {
     /// If `expr_i` is out-of-bounds, a reference to a default `Expression` is returned.
     ///
     #[inline]
-    pub fn get_expr(&self, expr_i:ExpressionI) -> &Expression {
+    pub fn get_expr(&self, expr_i: ExpressionI) -> &Expression {
         // I'm using this non-panic match structure to boost performance:
         match self.exprs.get(expr_i.0) {
             Some(expr_ref) => expr_ref,
@@ -247,7 +250,7 @@ impl ParseSlab {
     /// If `val_i` is out-of-bounds, a reference to a default `Value` is returned.
     ///
     #[inline]
-    pub fn get_val(&self, val_i:ValueI) -> &Value {
+    pub fn get_val(&self, val_i: ValueI) -> &Value {
         match self.vals.get(val_i.0) {
             Some(val_ref) => val_ref,
             None => &self.def_val,
@@ -261,9 +264,11 @@ impl ParseSlab {
     /// If `ParseSlab.exprs` is already full, a `SlabOverflow` error is returned.
     ///
     #[inline]
-    pub(crate) fn push_expr(&mut self, expr:Expression) -> Result<ExpressionI,Error> {
+    pub(crate) fn push_expr(&mut self, expr: Expression) -> Result<ExpressionI, Error> {
         let i = self.exprs.len();
-        if i>=self.exprs.capacity() { return Err(Error::SlabOverflow); }
+        if i >= self.exprs.capacity() {
+            return Err(Error::SlabOverflow);
+        }
         self.exprs.push(expr);
         Ok(ExpressionI(i))
     }
@@ -275,9 +280,11 @@ impl ParseSlab {
     /// If `ParseSlab.vals` is already full, a `SlabOverflow` error is returned.
     ///
     #[inline]
-    pub(crate) fn push_val(&mut self, val:Value) -> Result<ValueI,Error> {
+    pub(crate) fn push_val(&mut self, val: Value) -> Result<ValueI, Error> {
         let i = self.vals.len();
-        if i>=self.vals.capacity() { return Err(Error::SlabOverflow); }
+        if i >= self.vals.capacity() {
+            return Err(Error::SlabOverflow);
+        }
         self.vals.push(val);
         Ok(ValueI(i))
     }
@@ -290,10 +297,26 @@ impl ParseSlab {
     }
 
     /// [See the `add_unsafe_var()` documentation above.](#unsafe-variable-registration-with-add_unsafe_var)
-    #[cfg(feature="unsafe-vars")]
+    #[cfg(feature = "unsafe-vars")]
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub unsafe fn add_unsafe_var(&mut self, name:String, ptr:&f64) {
+    pub unsafe fn add_unsafe_var(&mut self, name: String, ptr: &f64) {
         self.unsafe_vars.insert(name, ptr as *const f64);
+    }
+
+    /// Get a mutable reference to the internal character buffer ([`Self::char_buf`]).
+    ///
+    /// # Safety
+    ///
+    /// This function is seriously unsafe because it returns a mutable reference from a ref.
+    ///
+    /// # Panics
+    ///
+    /// If the internal character buffer is a null pointer, this function panics.
+    pub(crate) unsafe fn char_buf_mut(&self) -> &mut String {
+        self.char_buf
+            .get()
+            .as_mut()
+            .expect("ParseSlab::char_buf is a null pointer!")
     }
 }
 
@@ -304,7 +327,7 @@ impl CompileSlab {
     /// If `instr_i` is out-of-bounds, a reference to a default `Instruction` is returned.
     ///
     #[inline]
-    pub fn get_instr(&self, instr_i:InstructionI) -> &Instruction {
+    pub fn get_instr(&self, instr_i: InstructionI) -> &Instruction {
         match self.instrs.get(instr_i.0) {
             Some(instr_ref) => instr_ref,
             None => &self.def_instr,
@@ -312,24 +335,26 @@ impl CompileSlab {
     }
 
     /// Appends an `Instruction` to `CompileSlab.instrs`.
-    pub(crate) fn push_instr(&mut self, instr:Instruction) -> InstructionI {
-        if self.instrs.capacity()==0 { self.instrs.reserve(32); }
+    pub(crate) fn push_instr(&mut self, instr: Instruction) -> InstructionI {
+        if self.instrs.capacity() == 0 {
+            self.instrs.reserve(32);
+        }
         let i = self.instrs.len();
         self.instrs.push(instr);
         InstructionI(i)
     }
 
     /// Removes an `Instruction` from `CompileSlab.instrs` as efficiently as possible.
-    pub(crate) fn take_instr(&mut self, i:InstructionI) -> Instruction {
-        if i.0==self.instrs.len()-1 {
+    pub(crate) fn take_instr(&mut self, i: InstructionI) -> Instruction {
+        if i.0 == self.instrs.len() - 1 {
             match self.instrs.pop() {
                 Some(instr) => instr,
-                None => IConst(std::f64::NAN),
+                None => IConst(f64::NAN),
             }
         } else {
             match self.instrs.get_mut(i.0) {
-                Some(instr_ref) => mem::replace(instr_ref, IConst(std::f64::NAN)),  // Replace with a conspicuous value in case we use it by accident.
-                None => IConst(std::f64::NAN),
+                Some(instr_ref) => mem::replace(instr_ref, IConst(f64::NAN)), // Replace with a conspicuous value in case we use it by accident.
+                None => IConst(f64::NAN),
             }
         }
     }
@@ -344,24 +369,26 @@ impl CompileSlab {
 impl Slab {
     /// Creates a new default-sized `Slab`.
     #[inline]
-    pub fn new() -> Self { Self::with_capacity(64) }
+    pub fn new() -> Self {
+        Self::with_capacity(64)
+    }
 
     /// Creates a new `Slab` with the given capacity.
     #[inline]
-    pub fn with_capacity(cap:usize) -> Self {
-        Self{
-            ps:ParseSlab{
-                exprs      :Vec::with_capacity(cap),
-                vals       :Vec::with_capacity(cap),
-                def_expr   :Default::default(),
-                def_val    :Default::default(),
-                char_buf   :String::with_capacity(64),
-                #[cfg(feature="unsafe-vars")]
-                unsafe_vars:BTreeMap::new(),
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            ps: ParseSlab {
+                exprs: Vec::with_capacity(cap),
+                vals: Vec::with_capacity(cap),
+                def_expr: Default::default(),
+                def_val: Default::default(),
+                char_buf: String::with_capacity(64).into(),
+                #[cfg(feature = "unsafe-vars")]
+                unsafe_vars: BTreeMap::new(),
             },
-            cs:CompileSlab{
-                instrs   :Vec::new(),  // Don't pre-allocate for compilation.
-                def_instr:Default::default(),
+            cs: CompileSlab {
+                instrs: Vec::new(), // Don't pre-allocate for compilation.
+                def_instr: Default::default(),
             },
         }
     }
@@ -375,21 +402,27 @@ impl Slab {
     }
 }
 
-
-fn write_indexed_list<T>(f:&mut fmt::Formatter, lst:&[T]) -> Result<(), fmt::Error> where T:fmt::Debug {
+fn write_indexed_list<T>(f: &mut fmt::Formatter, lst: &[T]) -> Result<(), fmt::Error>
+where
+    T: fmt::Debug,
+{
     write!(f, "{{")?;
     let mut nonempty = false;
-    for (i,x) in lst.iter().enumerate() {
-        if nonempty { write!(f, ",")?; }
+    for (i, x) in lst.iter().enumerate() {
+        if nonempty {
+            write!(f, ",")?;
+        }
         nonempty = true;
-        write!(f, " {}:{:?}",i,x)?;
+        write!(f, " {}:{:?}", i, x)?;
     }
-    if nonempty { write!(f, " ")?; }
+    if nonempty {
+        write!(f, " ")?;
+    }
     write!(f, "}}")?;
     Ok(())
 }
 impl fmt::Debug for Slab {
-    fn fmt(&self, f:&mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "Slab{{ exprs:")?;
         write_indexed_list(f, &self.ps.exprs)?;
         write!(f, ", vals:")?;
@@ -401,7 +434,7 @@ impl fmt::Debug for Slab {
     }
 }
 impl fmt::Debug for ParseSlab {
-    fn fmt(&self, f:&mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "ParseSlab{{ exprs:")?;
         write_indexed_list(f, &self.exprs)?;
         write!(f, ", vals:")?;
@@ -411,7 +444,7 @@ impl fmt::Debug for ParseSlab {
     }
 }
 impl fmt::Debug for CompileSlab {
-    fn fmt(&self, f:&mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "CompileSlab{{ instrs:")?;
         write_indexed_list(f, &self.instrs)?;
         write!(f, " }}")?;
@@ -420,6 +453,7 @@ impl fmt::Debug for CompileSlab {
 }
 
 impl Default for Slab {
-    fn default() -> Self { Self::with_capacity(64) }
+    fn default() -> Self {
+        Self::with_capacity(64)
+    }
 }
-
